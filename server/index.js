@@ -33,6 +33,11 @@ app.use("/api/donations", donationRoutes);
 app.use((_req, res) => res.status(404).json({ message: "Route not found" }));
 
 // ── Connect DB & Start ────────────────────────────────────────────────────────
+if (!process.env.MONGO_URI) {
+  console.error("❌ Error: MONGO_URI is not defined in environment variables.");
+  process.exit(1);
+}
+
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => {
