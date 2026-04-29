@@ -3,6 +3,9 @@ node_modules/
 .pnp
 .pnp.js
 
+# Server secrets
+server/.env
+
 # Production build
 dist/
 build/

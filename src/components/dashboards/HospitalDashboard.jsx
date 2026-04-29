@@ -2,47 +2,60 @@ import { useState } from "react";
 import { S, BLOOD_TYPES } from "../../styles";
 import { Topbar, Btn, Card, Select, Input } from "../shared/UI";
 
-const HospitalDashboard = ({ user, banks, requests, setRequests, onLogout }) => {
+const HospitalDashboard = ({ user, banks, requests, onCreateRequest, onLogout }) => {
   const [bloodType, setBloodType] = useState("");
-  const [units, setUnits]         = useState("");
-  const [urgency, setUrgency]     = useState("Normal");
-  const [msg, setMsg]             = useState("");
+  const [units,     setUnits]     = useState("");
+  const [urgency,   setUrgency]   = useState("Normal");
+  const [msg,       setMsg]       = useState("");
+  const [busy,      setBusy]      = useState(false);
 
   const myRequests = requests.filter((r) => r.hospitalUsername === user.username);
 
-  const submit = () => {
-    if (!bloodType || !units) { setMsg("Please fill blood type and units."); return; }
-    const newReq = {
-      id: Date.now(),
-      bankId: banks[0].id,
-      hospitalUsername: user.username,
-      hospitalName: user.name || user.username,
-      bloodType,
-      units: parseInt(units),
-      urgency,
-      status: "pending",
-      time: new Date().toLocaleTimeString(),
-    };
-    setRequests((r) => [...r, newReq]);
-    setMsg("Request submitted successfully!");
-    setBloodType(""); setUnits(""); setUrgency("Normal");
-    setTimeout(() => setMsg(""), 3000);
+  const showMsg = (text, ms = 3500) => {
+    setMsg(text);
+    setTimeout(() => setMsg(""), ms);
   };
 
-  const sendEmergency = () => {
-    ["A+", "O+", "B+"].forEach((bt, i) => {
-      const newReq = {
-        id: Date.now() + i,
-        bankId: banks[i % banks.length].id,
-        hospitalUsername: user.username,
+  const submit = async () => {
+    if (!bloodType || !units) { showMsg("Please fill blood type and units."); return; }
+    if (!banks.length)        { showMsg("No blood banks available."); return; }
+    setBusy(true);
+    try {
+      await onCreateRequest({
+        bankId:       banks[0]._id || banks[0].id,
         hospitalName: user.name || user.username,
-        bloodType: bt, units: 5, urgency: "Critical",
-        status: "pending", time: new Date().toLocaleTimeString(),
-      };
-      setRequests((r) => [...r, newReq]);
-    });
-    setMsg("🚨 Emergency alert sent to all blood banks!");
-    setTimeout(() => setMsg(""), 4000);
+        bloodType,
+        units:        parseInt(units),
+        urgency,
+      });
+      showMsg("Request submitted successfully!");
+      setBloodType(""); setUnits(""); setUrgency("Normal");
+    } catch (err) {
+      showMsg(err.message || "Failed to submit request.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendEmergency = async () => {
+    if (!banks.length) { showMsg("No blood banks available."); return; }
+    setBusy(true);
+    try {
+      for (const [i, bt] of ["A+", "O+", "B+"].entries()) {
+        await onCreateRequest({
+          bankId:       banks[i % banks.length]._id || banks[i % banks.length].id,
+          hospitalName: user.name || user.username,
+          bloodType:    bt,
+          units:        5,
+          urgency:      "Critical",
+        });
+      }
+      showMsg("🚨 Emergency alert sent to all blood banks!", 4000);
+    } catch (err) {
+      showMsg(err.message || "Failed to send emergency alert.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const statusColor = { pending: S.warning, approved: S.success, rejected: S.red };
@@ -62,33 +75,19 @@ const HospitalDashboard = ({ user, banks, requests, setRequests, onLogout }) => 
             <h3 style={{ margin: "0 0 20px", fontSize: 17, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
               💉 Request Blood
             </h3>
-            <Select
-              label="Blood Type"
-              value={bloodType}
-              onChange={(e) => setBloodType(e.target.value)}
-              options={BLOOD_TYPES}
-            />
-            <Input
-              label="Units Required"
-              placeholder="Number of units"
-              type="number"
-              value={units}
-              onChange={(e) => setUnits(e.target.value)}
-            />
-            <Select
-              label="Urgency"
-              value={urgency}
-              onChange={(e) => setUrgency(e.target.value)}
-              options={["Normal", "Urgent", "Critical"]}
-            />
+            <Select label="Blood Type" value={bloodType} onChange={(e) => setBloodType(e.target.value)} options={BLOOD_TYPES} />
+            <Input  label="Units Required" placeholder="Number of units" type="number" value={units} onChange={(e) => setUnits(e.target.value)} />
+            <Select label="Urgency" value={urgency} onChange={(e) => setUrgency(e.target.value)} options={["Normal", "Urgent", "Critical"]} />
             {msg && (
               <p style={{ color: msg.includes("🚨") || msg.includes("success") ? S.success : S.red, fontSize: 13, marginBottom: 12 }}>
                 {msg}
               </p>
             )}
-            <Btn full onClick={submit} style={{ marginBottom: 10 }}>Submit Request</Btn>
-            <Btn full onClick={sendEmergency} style={{ background: "#E67E22" }}>
-              🚨 Send Emergency Alert
+            <Btn full onClick={submit} disabled={busy} style={{ marginBottom: 10 }}>
+              {busy ? "Submitting…" : "Submit Request"}
+            </Btn>
+            <Btn full onClick={sendEmergency} disabled={busy} style={{ background: "#E67E22" }}>
+              {busy ? "Sending…" : "🚨 Send Emergency Alert"}
             </Btn>
           </Card>
 
@@ -97,21 +96,15 @@ const HospitalDashboard = ({ user, banks, requests, setRequests, onLogout }) => 
             <h3 style={{ margin: "0 0 16px", fontSize: 17, fontWeight: 700 }}>Available Blood Banks</h3>
             <div style={{ maxHeight: 400, overflowY: "auto" }}>
               {banks.map((bank) => (
-                <div
-                  key={bank.id}
-                  style={{ border: `1px solid ${S.border}`, borderRadius: 12, padding: 16, marginBottom: 14 }}
-                >
+                <div key={bank._id || bank.id} style={{ border: `1px solid ${S.border}`, borderRadius: 12, padding: 16, marginBottom: 14 }}>
                   <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{bank.name}</div>
                   <div style={{ color: S.muted, fontSize: 13, marginBottom: 2 }}>📍 {bank.address}</div>
                   <div style={{ color: S.muted, fontSize: 13, marginBottom: 12 }}>📞 {bank.phone}</div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
                     {BLOOD_TYPES.map((bt) => (
-                      <div
-                        key={bt}
-                        style={{ background: S.redPale, borderRadius: 8, padding: "8px 4px", textAlign: "center" }}
-                      >
+                      <div key={bt} style={{ background: S.redPale, borderRadius: 8, padding: "8px 4px", textAlign: "center" }}>
                         <div style={{ color: S.red, fontWeight: 800, fontSize: 11 }}>{bt}</div>
-                        <div style={{ fontWeight: 700, fontSize: 16 }}>{bank.inventory[bt] || 0}</div>
+                        <div style={{ fontWeight: 700, fontSize: 16 }}>{bank.inventory?.[bt] ?? 0}</div>
                       </div>
                     ))}
                   </div>
@@ -130,47 +123,28 @@ const HospitalDashboard = ({ user, banks, requests, setRequests, onLogout }) => 
                 <thead>
                   <tr style={{ background: S.bg }}>
                     {["Blood Type", "Units", "Urgency", "Blood Bank", "Time", "Status"].map((h) => (
-                      <th
-                        key={h}
-                        style={{
-                          padding: "10px 14px", textAlign: "left",
-                          fontWeight: 700, fontSize: 12, color: S.muted,
-                          borderBottom: `1px solid ${S.border}`,
-                        }}
-                      >
+                      <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontWeight: 700, fontSize: 12, color: S.muted, borderBottom: `1px solid ${S.border}` }}>
                         {h}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {[...myRequests].reverse().map((r) => (
-                    <tr key={r.id} style={{ borderBottom: `1px solid ${S.border}` }}>
+                  {myRequests.map((r) => (
+                    <tr key={r._id || r.id} style={{ borderBottom: `1px solid ${S.border}` }}>
                       <td style={{ padding: "12px 14px", fontWeight: 700, color: S.red }}>{r.bloodType}</td>
                       <td style={{ padding: "12px 14px" }}>{r.units}</td>
                       <td style={{ padding: "12px 14px" }}>
-                        <span
-                          style={{
-                            color: r.urgency === "Critical" ? S.urgent : r.urgency === "Urgent" ? S.warning : S.muted,
-                            fontWeight: 600,
-                          }}
-                        >
+                        <span style={{ color: r.urgency === "Critical" ? S.urgent : r.urgency === "Urgent" ? S.warning : S.muted, fontWeight: 600 }}>
                           {r.urgency}
                         </span>
                       </td>
                       <td style={{ padding: "12px 14px" }}>
-                        {banks.find((b) => b.id === r.bankId)?.name || "—"}
+                        {r.bankName || banks.find((b) => String(b._id || b.id) === String(r.bankId))?.name || "—"}
                       </td>
-                      <td style={{ padding: "12px 14px", color: S.muted }}>{r.time}</td>
+                      <td style={{ padding: "12px 14px", color: S.muted }}>{r.time || new Date(r.createdAt).toLocaleTimeString()}</td>
                       <td style={{ padding: "12px 14px" }}>
-                        <span
-                          style={{
-                            background: `${statusColor[r.status]}20`,
-                            color: statusColor[r.status],
-                            padding: "3px 10px", borderRadius: 20,
-                            fontSize: 12, fontWeight: 700,
-                          }}
-                        >
+                        <span style={{ background: `${statusColor[r.status]}20`, color: statusColor[r.status], padding: "3px 10px", borderRadius: 20, fontSize: 12, fontWeight: 700 }}>
                           {r.status}
                         </span>
                       </td>

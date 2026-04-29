@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: blood-bank-api
+    env: node
+    region: singapore      # closest to India
+    plan: free
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGO_URI
+        sync: false        # set manually in Render dashboard
+      - key: JWT_SECRET
+        sync: false        # set manually in Render dashboard
+      - key: CLIENT_ORIGIN
+        sync: false        # your Vercel URL e.g. https://blood-bank.vercel.app
